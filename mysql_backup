@@ -1,0 +1,29 @@
+#!/bin/bash
+# Simple Database Backup and Rotation Utility
+
+# decrypt: gpg --output out.sql.gz --decrypt /backup/mysql/db-20110704-Mon.gz.gpg
+
+BACKUP_PATH=
+
+USER="root"
+PASS=`cat /root/.mysqlpass`
+PASSPHRASE=
+BUCKET=`hostname -f`
+
+DATE=`date +%Y%m%d-%a`
+DBS=`mysql -u $USER -p"$PASS" -Bse "show databases"`
+
+# Where to store your .sql backups
+cd "$BACKUP_PATH"
+
+# Remove Previous Week's Backup
+rm -f *-`date +%a`.gz.gpg
+
+for db in $DBS; do
+        mysqldump -u $USER -p$PASS --opt --allow-keywords --single-transaction --quote-names $db | gzip -9 > $db-$DATE.gz
+        gpg --yes --batch --passphrase "$PASSPHRASE" -c $db-$DATE.gz
+        rm -rf $db-$DATE.gz
+done
+
+s3cmd sync -r --delete-removed --no-encrypt -v /backup/mysql/ s3://$BUCKET/mysql/
+
